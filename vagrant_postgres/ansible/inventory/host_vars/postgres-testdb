@@ -1,0 +1,3 @@
+---
+install_dvdrental_db: true
+install_odbc: true

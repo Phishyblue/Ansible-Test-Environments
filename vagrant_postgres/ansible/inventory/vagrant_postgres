@@ -1,0 +1,9 @@
+[postgresql11]
+postgres-testdb ansible_host=192.168.50.3
+
+[ansible_master]
+vagrant-ansible ansible_host=192.168.50.2
+
+[vagrant:children]
+ansible_master
+postgresql11

@@ -1,0 +1,47 @@
+---
+# Requires the community crypto collection.
+#   ansible-galaxy collection install community.crypto
+- name: Generate RSA Keypair for Vagrant Ansible Node.
+  community.crypto.openssh_keypair:
+    comment: vagrant-ansible-master
+    owner: vagrant
+    path: "~/.ssh/id_rsa"
+    state: present
+    type: rsa
+  when:
+    - "inventory_hostname in groups['ansible_master']"
+
+- name: Place Ansible Master node's public key file on Managed node(s).
+  ansible.builtin.copy:
+    src: "~/.ssh/id_rsa.pub"
+    dest: "/tmp/ansible-master-id_rsa.pub"
+    force: yes
+  when:
+    - "inventory_hostname not in groups['ansible_master']"
+
+- name: Register the managed nodes.
+  ansible.builtin.stat:
+    path: /tmp/ansible-master-id_rsa.pub
+  register: managed_nodes
+
+- name: Read the Ansible Master's key.
+  ansible.builtin.command: cat /tmp/ansible-master-id_rsa.pub
+  register: pub_key
+  when:
+    - "managed_nodes.stat.exists"
+
+- name: Copy the public key(s) to authorized_keys file of every Ansible Node.
+  ansible.builtin.authorized_key:
+    user: vagrant
+    state: present
+    key: "{{ pub_key.stdout }}"
+  when:
+    - "pub_key.stdout is defined"
+
+- name: Remove temporary public key file from Ansible node(s).
+  ansible.builtin.file:
+    path: /tmp/ansible-master-id_rsa.pub
+    state: absent
+  when:
+    - "managed_nodes.stat.exists"
+  ignore_errors: yes

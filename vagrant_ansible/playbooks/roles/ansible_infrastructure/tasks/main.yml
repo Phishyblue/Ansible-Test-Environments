@@ -1,0 +1,22 @@
+---
+- name: Install SSHPass on Ansible Master.
+  ansible.builtin.package:
+    name: sshpass
+    state: present
+  register: pkg_inst_result
+  failed_when: pkg_inst_result.rc != 0
+  ignore_errors: yes
+
+- name: Install modern Python.
+  ansible.builtin.yum:
+    name: python3
+    state: present
+
+- name: Install Ansible via pip.
+  ansible.builtin.pip:
+    name: ansible
+
+- name: Install SELinux bindings for Python3.
+  ansible.builtin.yum:
+    name: libselinux-python3
+    state: present

@@ -1,0 +1,58 @@
+---
+# Note: Because of the nature of what this playbook does, there is absolutely no reason to run check mode (--check).
+#   Check mode will fail on just about every single task because of dependencies on the previous task completing successfully.
+- name: Retrieve managed node fingerprints.
+  ansible.builtin.command: "ssh-keyscan -t ssh-rsa {{ inventory_hostname }}"
+  register: fingerprints
+  delegate_to: localhost
+
+- name: Ensure known_hosts file exists.
+  ansible.builtin.file:
+    path: ~/.ssh/known_hosts
+    state: touch
+  delegate_to: localhost
+  when: "inventory_hostname in groups['ansible_master']"
+
+- name: Add fingerprints to Master's known_hosts file.
+  ansible.builtin.lineinfile:
+    path: ~/.ssh/known_hosts
+    line: "{{ fingerprints['stdout'] }}"
+    state: present
+  delegate_to: localhost
+  when:
+    - "inventory_hostname != item or inventory_hostname == item"
+  with_items: "{{groups['all']}}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Gather facts - Had to be done after managed nodes were fingerprinted.
+  ansible.builtin.gather_facts:
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Update the /etc/hosts file with node name.
+  become: yes
+  become_user: root
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: ".*\t{{ hostvars[item]['ansible_hostname'] }}\t{{ hostvars[item]['ansible_hostname']}}"
+    line: "{{ hostvars[item]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}\t{{ hostvars[item]['ansible_hostname'] }}\t{{ hostvars[item]['ansible_hostname'] }}"
+    state: present
+    backup: yes
+  register: etchostsupdate
+  when: ansible_hostname != item or ansible_hostname == item
+  with_items: "{{ groups['all'] }}"
+
+- name: Register Ansible Master Nodes for next task.
+  ansible.builtin.stat:
+    path: "{{ inventory_file }}"
+  register: inventory_on_master
+
+- name: Update inventory files with hostnames discovered prior.
+  ansible.builtin.replace:
+    path: "{{ inventory_file }}"
+    regexp: "(.* ansible_host=){0,1}{{ hostvars[item]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}"
+    replace: "{{ hostvars[item]['ansible_hostname'] }} ansible_host={{ hostvars[item]['ansible_env'].SSH_CONNECTION.split(' ')[2] }}"
+  delegate_to: localhost
+  when:
+    - ansible_hostname != item or ansible_hostname == item
+    - inventory_on_master.stat.exists
+  with_items: "{{groups['all']}}"

@@ -1,0 +1,8 @@
+---
+- name: Prepare managed nodes for Ansible management.
+  hosts: all
+  gather_facts: False               # This playbook won't be able to gather facts.
+
+  roles:
+    - ip_hostname_resolver
+    - RSA_hostname_management

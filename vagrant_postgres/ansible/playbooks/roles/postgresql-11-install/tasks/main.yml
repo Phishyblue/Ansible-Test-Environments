@@ -1,0 +1,73 @@
+---
+- name: Install PostgreSQL RPM.
+  ansible.builtin.yum:
+    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    state: present
+    disable_gpg_check: true
+
+- name: Install PostgreSQL 11.
+  ansible.builtin.yum:
+    name: postgresql11-server
+    state: present
+    disable_gpg_check: true
+  register: standard_resolve
+  ignore_errors: yes
+
+- name: "Failover for RHEL 8 nodes using AppStream: Disable postgreql - use pgdg instead."
+  ansible.builtin.command: "dnf -y module disable postgresql"
+  when: "ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_major_version'] >= '8' and standard_resolve['failed'] == true and 'postgresql11-server All matches were filtered out by modular filtering for argument: postgresql11-server' in standard_resolve['failures']"
+
+- name: "Failover for RHEL 8 nodes using AppStream: Install PostgreSQL 11."
+  ansible.builtin.dnf:
+    name: postgresql11-server
+    disable_gpg_check: true
+    state: present
+  when: "ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_major_version'] >= '8' and standard_resolve['failed'] == true and 'postgresql11-server All matches were filtered out by modular filtering for argument: postgresql11-server' in standard_resolve['failures']"
+
+- name: Install modern Python (depdency for PostgreSQL).
+  ansible.builtin.yum:
+    name: python3
+    state: present
+
+- name: Install psycopg2 dependency.
+  ansible.builtin.pip:
+    name: psycopg2-binary
+    state: present
+    executable: /usr/bin/pip3
+
+- name: Check data directory.
+  ansible.builtin.stat:
+    path: /var/lib/pgsql/11/data
+  register: data_dir
+
+- name: Initialize the PostgreSQL 11 database.
+  ansible.builtin.command: /usr/pgsql-11/bin/postgresql-11-setup initdb
+  when: not data_dir.stat.exists
+
+- name: Start and enable PostgreSQL 11 service.
+  ansible.builtin.systemd:
+    state: started
+    enabled: yes
+    name: postgresql-11
+
+- name: "DVD Rental Database: Restore dvdrental."
+  become: true
+  become_user: postgres
+  ansible.builtin.postgresql_db:
+    state: restore
+    target: /vagrant/ansible/playbooks/roles/postgresql-11-install/files/dvdrental/restore.sql
+    owner: postgres
+    name: dvdrental
+  when: install_dvdrental_db
+
+- name: "ODBC: Install unixODBC if required."
+  ansible.builtin.yum:
+    name: unixODBC
+    state: present
+  when: install_odbc
+
+- name: "ODBC: Install pgsqlODBC for PostgreSQL 11."
+  ansible.builtin.yum:
+    name: postgresql11-odbc
+    state: present
+  when: install_odbc

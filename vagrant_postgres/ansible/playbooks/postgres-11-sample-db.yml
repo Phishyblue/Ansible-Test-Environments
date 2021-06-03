@@ -1,0 +1,8 @@
+---
+- name: Setup PostgreSQL 11 Database.
+  hosts: postgresql11
+  become: yes
+  become_user: root
+  
+  roles:
+    - postgresql-11-install
